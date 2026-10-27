@@ -54,6 +54,10 @@ describe("model content capture on large transcripts (#158116)", () => {
         .mock.calls.filter(([text]) => text === toolOutput);
       expect(calls).toHaveLength(1);
     }
+    // The serialized transcript is past 4x the budget, so it is never redacted whole.
+    for (const [text] of vi.mocked(redactSensitiveText).mock.calls) {
+      expect(text.length).toBeLessThanOrEqual(4 * MAX_OTEL_CONTENT_ATTRIBUTE_CHARS);
+    }
     for (const key of CONTENT_KEYS) {
       expect(stringAttribute(attributes, key).length).toBeLessThanOrEqual(
         MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,

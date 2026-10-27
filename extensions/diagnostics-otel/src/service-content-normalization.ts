@@ -30,8 +30,9 @@ export type OtelContentRedactor = (value: string) => string;
 // Redaction is the dominant cost of content capture, and a string's redaction does
 // not depend on which attribute or truncation budget it lands in. One redactor per
 // export redacts each captured string once instead of once per budget attempt and
-// per attribute that carries the same message. Scope it to one export: it holds
-// the redacted copies until it is dropped.
+// per attribute that carries the same message. A memo rather than a pre-redacted
+// tree, because each attribute walks a different shape built from the same strings.
+// Scope it to one export: it holds the redacted copies until it is dropped.
 export function createOtelContentRedactor(): OtelContentRedactor {
   const redacted = new Map<string, string>();
   return (value) => {
