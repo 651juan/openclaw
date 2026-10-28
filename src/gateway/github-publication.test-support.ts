@@ -306,6 +306,19 @@ export function commandResult(stdout = "", code = 0) {
   };
 }
 
+type CommandOverride = ReturnType<typeof commandResult> | void;
+
+/** Answer or observe selected commands; unanswered ones fall through to the installed transport. */
+export function overrideCommands(
+  override: (argv: string[], input?: string) => CommandOverride | Promise<CommandOverride>,
+) {
+  const fallback = mocks.runCommand.getMockImplementation()!;
+  mocks.runCommand.mockImplementation(
+    async (argv: string[], options?: { input?: string }) =>
+      (await override(argv, options?.input)) ?? (await fallback(argv, options)),
+  );
+}
+
 export function seedLocalPublication(
   database: OpenClawStateDatabase,
   params: {
@@ -314,6 +327,7 @@ export function seedLocalPublication(
     repositoryFingerprint?: string;
     headCommit?: string | null;
     requester?: GitHubPublicationRequesterSnapshot | null;
+    createdAtMs?: number;
   },
 ): void {
   ensureGitHubPublicationSchema(database.db);
@@ -342,7 +356,7 @@ export function seedLocalPublication(
     source_index_tree: WORKSPACE_TREE,
     workspace_tree: WORKSPACE_TREE,
     head_commit: params.headCommit === undefined ? NEW_HEAD : params.headCommit,
-    created_at_ms: 1_000,
+    created_at_ms: params.createdAtMs ?? 1_000,
     updated_at_ms: 1_001,
   };
   const columns = Object.keys(row);
