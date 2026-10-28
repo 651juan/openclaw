@@ -8,11 +8,11 @@ vi.mock("openclaw/plugin-sdk/security-runtime", async (importOriginal) => {
   return { ...actual, redactSensitiveText: vi.fn(actual.redactSensitiveText) };
 });
 
-function capture(inputMessages: unknown[]): Record<string, string> {
+function capture(inputMessages: unknown[]): (key: string) => string {
   const attributes: Record<string, string | number | boolean> = {};
   vi.mocked(redactSensitiveText).mockClear();
   assignOtelModelContentAttributes(attributes, { inputMessages }, true);
-  return attributes as Record<string, string>;
+  return (key) => String(attributes[key]);
 }
 
 const text = (role: string, value: string) => ({ role, content: [{ type: "text", text: value }] });
@@ -21,7 +21,7 @@ test("redacts each string of a large transcript once and masks it in every attri
   const secret = "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123"; // pragma: allowlist secret
   // Past 4x the budget, so every attribute walks several truncation budgets.
   const outputs = Array.from({ length: 40 }, (_, i) => `tool output ${i} ${"z".repeat(20_000)}`);
-  const attributes = capture([
+  const attr = capture([
     text("user", `deploy with key ${secret}`),
     ...outputs.map((output) => text("toolResult", output)),
   ]);
@@ -32,31 +32,31 @@ test("redacts each string of a large transcript once and masks it in every attri
   }
   expect(Math.max(...calls.map((value) => value.length))).toBeLessThanOrEqual(4 * MAX);
   for (const key of ["gen_ai.input.messages", "input.value", "openclaw.content.input_messages"]) {
-    expect(attributes[key].length).toBeLessThanOrEqual(MAX);
-    expect(attributes[key]).toContain("deploy with key sk-ant");
-    expect(attributes[key]).not.toContain(secret);
+    expect(attr(key).length).toBeLessThanOrEqual(MAX);
+    expect(attr(key)).toContain("deploy with key sk-ant");
+    expect(attr(key)).not.toContain(secret);
   }
-  expect(attributes["input.value"]).toBe(attributes["gen_ai.input.messages"]);
+  expect(attr("input.value")).toBe(attr("gen_ai.input.messages"));
 });
 
 test("exports a value whole when masking brings it under the attribute budget", () => {
-  const attributes = capture([text("user", `sk-${"a".repeat(MAX + 10_000)}`)]);
-  expect(JSON.parse(attributes["gen_ai.input.messages"])[0].parts).toEqual([
+  const attr = capture([text("user", `sk-${"a".repeat(MAX + 10_000)}`)]);
+  expect(JSON.parse(attr("gen_ai.input.messages"))[0].parts).toEqual([
     { type: "text", content: "sk-aaa…aaaa" },
   ]);
 });
 
 test("drops image bytes too large to export whole and keeps smaller images", () => {
   const image = (data: string) => ({ type: "image", mimeType: "image/png", data });
-  const attributes = capture([
+  const attr = capture([
     { role: "user", content: [image("iVBORw0KGgo=")] },
     { role: "user", content: [image("A".repeat(MAX + 1))] },
   ]);
   const blob = { type: "blob", modality: "image", mime_type: "image/png" };
-  expect(
-    JSON.parse(attributes["gen_ai.input.messages"]).map((m: { parts: unknown }) => m.parts),
-  ).toEqual([[{ ...blob, content: "iVBORw0KGgo=" }], [blob]]);
-  expect(JSON.parse(attributes["openclaw.content.input_messages"])).toEqual([
+  expect(JSON.parse(attr("gen_ai.input.messages")).map((m: { parts: unknown }) => m.parts)).toEqual(
+    [[{ ...blob, content: "iVBORw0KGgo=" }], [blob]],
+  );
+  expect(JSON.parse(attr("openclaw.content.input_messages"))).toEqual([
     { role: "user", content: [image("iVBORw0KGgo=")] },
     { role: "user", content: [{ type: "image", mimeType: "image/png" }] },
   ]);
