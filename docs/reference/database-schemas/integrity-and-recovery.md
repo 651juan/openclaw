@@ -214,6 +214,15 @@ A separate Doctor invocation continues to inspect current bytes. These are
 candidate-side changes; the installed updater still runs first
 under its own version's behavior.
 
+Before acquiring an agent maintenance lease, Doctor finishes recognized shared-state
+repairs after preserving the original databases. This also applies when an update
+only needs additive agent columns, with no agent schema-version migration. A
+completed shared-state version phase can still leave publication draft columns or
+startup columns in present lazy tables pending; Doctor completes those repairs
+before lease and registry writes. Absent feature tables remain lazy, and unknown
+schema drift refuses preparation before agent writes. These candidate-side repairs
+do not change schema versions, retention, or the installed updater.
+
 During a native agent migration commit, SQLite maintenance retains the shared-state
 write lock. Its heartbeat waits for that fence instead of treating the blocked
 renewal as lease loss. Before releasing the lock, maintenance renews the unchanged
@@ -1016,6 +1025,46 @@ refreshes until their normal retirement. This policy does not add recurring
 analysis to agent databases; Doctor's stopped-writer same-version media repair
 uses the same bounded statistics primitive.
 Modern version migrations leave unrelated planner statistics unchanged.
+
+## Historical import evidence
+
+Doctor recognizes historical agent-schema-24 pending inputs with
+`recovery_intent_json` and retains that exact nullable text column as archival
+evidence. It changes queued rows to interrupted in the migration transaction;
+input identities, serialized messages, cancellation state, and recovery envelopes
+remain intact. Fresh databases do not acquire the retired column, and runtime
+readers never use it to authorize replay. Other unexpected optional-table columns
+and different declarations remain incompatible.
+
+Historical image-project snapshots in shared schema 22 become the existing
+non-repository `runtimePreparation` shape. The original serialized profile is
+retained in `historicalProfileSnapshotJson`; it is evidence, not a second runtime
+preparation owner. The conversion preserves environment identities, leases, epochs,
+demand, expiry, consumption, and cleanup state. Conflicting or malformed preparation
+rolls back rather than silently dropping the environment. Doctor also repairs the
+data shape when a previous import already advanced the version markers.
+
+The historical shared-schema-21 placement contract also permits active workers
+whose repository preparation never completed. Doctor recognizes that exact table
+shape, retains its existing `repository_preparation` column as nullable archival
+text, and installs the current placement constraints. Incomplete preparations
+become failed with a cleanup diagnostic; identities, rowids, environment references,
+owner epochs, generations, claims, indexes, and triggers remain intact. A worker-owned
+claim that cannot coexist with the failed state refuses the entire transaction
+without advancing either schema marker. Doctor never clears such a claim to make
+the row fit. Missing v21 predicate columns are derived from the retained JSON
+before version publication. Unrecognized schema differences remain refused.
+
+These imports reuse existing schema versions and maintenance/backup owners.
+They do not install retained-disk authority or create new persistence tables.
+Archival columns are absent from fresh schemas and follow their existing row
+lifetimes; they are never runtime execution authority. The PostgreSQL port
+descriptor does not cover these archival columns and refuses them before target
+publication, including NULL-only columns. Keep stores with these archival columns
+on SQLite; do not
+drop their evidence or edit schema markers to force a cross-engine port.
+Rollback requires the verified pre-migration backup and matching runtime, not
+manual edits to the version markers.
 
 ## Troubleshooting
 
